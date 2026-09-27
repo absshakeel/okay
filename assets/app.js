@@ -1,5 +1,10 @@
 (() => {
 
+    const COOKIE = "are_you_ok";
+    const KEY = "are_you_ok";
+    const BUILD = "3";
+
+
     function getCookie(name) {
 
         const cookies = document.cookie.split(";");
@@ -30,37 +35,145 @@
 
 
     /*
-     * Create the default session cookie.
+     * Accept every reasonable way of spelling "on", because people set this
+     * by hand: true, TRUE, "true", 'true', 1, yes.
      */
 
-    if (getCookie("are_you_ok") === null) {
+    function isUnlocked(raw) {
 
-        document.cookie = "are_you_ok=false; path=/; SameSite=Lax";
+        if (raw === null || raw === undefined) {
+            return false;
+        }
+
+        const value = String(raw)
+            .trim()
+            .replace(/^["']+/, "")
+            .replace(/["']+$/, "")
+            .toLowerCase();
+
+        return value === "true" || value === "1" || value === "yes";
     }
 
 
     /*
-     * Keep checking the cookie.
+     * Three sources, one question: has the system been cleared?
      *
-     * The player does NOT need to refresh.
+     * The cookie is the intended way in, but storage is honoured too so a
+     * blocked or path-scoped cookie can never strand somebody on the
+     * "verification in progress" screen with no way forward.
      */
 
-    const monitor = setInterval(() => {
+    function read(key) {
 
-        const status = getCookie("are_you_ok");
+        try {
+            return window.sessionStorage.getItem(key);
+        } catch (error) {
+            return null;
+        }
+    }
 
-        if (status === "true") {
+    function readLocal(key) {
 
-            clearInterval(monitor);
+        try {
+            return window.localStorage.getItem(key);
+        } catch (error) {
+            return null;
+        }
+    }
 
-            const script = document.createElement("script");
+    function isCleared() {
 
-            script.src = "assets/check.js";
+        return isUnlocked(getCookie(COOKIE))
+            || isUnlocked(read(KEY))
+            || isUnlocked(readLocal(KEY));
+    }
 
-            document.head.appendChild(script);
+
+    /*
+     * Create the default session cookie, and mirror it into storage so the
+     * three sources can never drift apart.
+     */
+
+    function remember(value) {
+
+        document.cookie = COOKIE + "=" + value + "; path=/; SameSite=Lax";
+
+        try {
+            window.sessionStorage.setItem(KEY, value);
+            window.localStorage.setItem(KEY, value);
+        } catch (error) {
+            /* private mode: the cookie still carries the state */
+        }
+    }
+
+
+    /*
+     * Pull in the payload. The build stamp and timestamp force a real network
+     * fetch, so a stale cached copy of check.js can never be what runs here.
+     */
+
+    let loading = false;
+
+    function reveal() {
+
+        if (loading) {
+            return;
         }
 
-    }, 300);
+        loading = true;
 
+        const script = document.createElement("script");
+
+        script.src = "assets/check.js?v=" + BUILD + "&t=" + Date.now();
+
+        script.onerror = () => {
+            loading = false;
+            setTimeout(reveal, 400);
+        };
+
+        document.head.appendChild(script);
+    }
+
+
+    function tick() {
+
+        if (!isCleared()) {
+            return;
+        }
+
+        clearInterval(monitor);
+
+        reveal();
+    }
+
+
+    if (getCookie(COOKIE) === null && read(KEY) === null && readLocal(KEY) === null) {
+        remember("false");
+    }
+
+
+    /*
+     * Check straight away, then keep checking: the player does NOT need to
+     * refresh, and does not need to get the order of things right.
+     */
+
+    const monitor = setInterval(tick, 300);
+
+    tick();
+
+
+    /*
+     * Console shortcut, for anyone who would rather not dig through the
+     * devtools cookie editor:  unlockOkay()
+     */
+
+    window.unlockOkay = () => {
+
+        remember("true");
+
+        clearInterval(monitor);
+
+        reveal();
+    };
 
 })();

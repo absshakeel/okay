@@ -13,6 +13,13 @@
         "S30="
     ];
 
+    const BANNER_ID = "okay-flag-banner";
+
+    /* Re-running this file must never stack banners. */
+    if (document.getElementById(BANNER_ID)) {
+        return;
+    }
+
     let flag;
 
     try {
@@ -30,7 +37,21 @@
         return;
     }
 
+    /*
+     * A payload that decodes to junk is just as broken as one that throws,
+     * so complain loudly instead of painting garbage across the page.
+     */
+
+    if (!/^FLAG\{[\x20-\x7e]+\}$/.test(flag)) {
+
+        console.error("check.js: payload decoded to junk:", JSON.stringify(flag));
+
+        return;
+    }
+
     const banner = document.createElement("div");
+
+    banner.id = BANNER_ID;
 
     banner.textContent = flag;
 
@@ -46,6 +67,6 @@
         z-index: 99999;
     `;
 
-    document.body.appendChild(banner);
+    (document.body || document.documentElement).appendChild(banner);
 
 })();
